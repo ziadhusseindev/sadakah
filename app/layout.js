@@ -15,17 +15,19 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "صدقة جارية",
-  description: "موقع صدقة جارية يحتوي على القرآن الكريم والأذكار ومواقيت الصلاة",
+  description: "موقع صدقة جارية يحتوي على القرآن الكريم والأذكار",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="ar" dir="rtl">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
         <Header />
-        <main className="flex-grow">{children}</main>
+        <main className="flex-grow pt-20">
+          {children}
+        </main>
         <Footer />
       </body>
     </html>

@@ -1,12 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { use } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
-import { FaArrowRight, FaPlay, FaPause, FaBookOpen, FaInfoCircle, FaDownload, FaShare } from 'react-icons/fa';
+import { FaArrowRight, FaPlay, FaPause, FaBookOpen, FaInfoCircle, FaDownload, FaShare, FaVolumeUp, FaUserAlt, FaExchangeAlt } from 'react-icons/fa';
+import { getAvailableReciters, getSurahAudio } from '../../services/quranService';
 
 export default function SurahPage({ params }) {
-  const { surahId } = params;
+  // استخدام React.use لفك الـ Promise الخاص بالـ params
+  const unwrappedParams = use(params);
+  const surahId = unwrappedParams.surahId;
+  
   const [surah, setSurah] = useState(null);
   const [ayahs, setAyahs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,6 +21,11 @@ export default function SurahPage({ params }) {
   const [audioElement, setAudioElement] = useState(null);
   const [activeAyah, setActiveAyah] = useState(null);
   const [fadeIn, setFadeIn] = useState(false);
+  const [reciters, setReciters] = useState([]);
+  const [selectedReciter, setSelectedReciter] = useState('ar.alafasy');
+  const [showReciterSelector, setShowReciterSelector] = useState(false);
+  const [ayahAudios, setAyahAudios] = useState({});
+  const [playingAyah, setPlayingAyah] = useState(null);
 
   useEffect(() => {
     const fetchSurah = async () => {
@@ -26,11 +36,15 @@ export default function SurahPage({ params }) {
         setSurah(surahResponse.data.data);
         
         // Fetch ayahs with Arabic text
-        const ayahsResponse = await axios.get(`https://api.alquran.cloud/v1/surah/${surahId}/ar.alafasy`);
+        const ayahsResponse = await axios.get(`https://api.alquran.cloud/v1/surah/${surahId}/${selectedReciter}`);
         setAyahs(ayahsResponse.data.data.ayahs);
         
-        // Set audio source
-        setAudioSrc(`https://cdn.islamic.network/quran/audio/128/ar.alafasy/${surahId}.mp3`);
+        // Set audio source for full surah
+        setAudioSrc(`https://cdn.islamic.network/quran/audio/128/${selectedReciter}/${surahId}.mp3`);
+        
+        // Fetch available reciters
+        const availableReciters = await getAvailableReciters();
+        setReciters(availableReciters);
         
         setLoading(false);
         setTimeout(() => setFadeIn(true), 100);
@@ -63,7 +77,7 @@ export default function SurahPage({ params }) {
         });
       }
     };
-  }, [surahId]);
+  }, [surahId, selectedReciter]);
 
   const toggleAudio = () => {
     if (!audioElement) return;
@@ -80,10 +94,39 @@ export default function SurahPage({ params }) {
     setAudioPlaying(!audioPlaying);
   };
 
-  const handleAyahClick = (ayahNumber) => {
-    // In a real implementation, we would seek to the specific ayah
-    // For now, we'll just highlight it
-    setActiveAyah(ayahNumber);
+  const handleAyahClick = (ayah) => {
+    // إذا كان هناك آية قيد التشغيل، قم بإيقافها
+    if (playingAyah) {
+      const currentAudio = new Audio();
+      currentAudio.pause();
+      if (playingAyah === ayah.number) {
+        setPlayingAyah(null);
+        return;
+      }
+    }
+
+    // تشغيل الآية المحددة
+    const ayahAudio = new Audio();
+    ayahAudio.src = `https://cdn.islamic.network/quran/audio/128/${selectedReciter}/${ayah.number}.mp3`;
+    ayahAudio.onended = () => {
+      setPlayingAyah(null);
+    };
+    ayahAudio.play().catch(e => console.error('Error playing ayah audio:', e));
+    setPlayingAyah(ayah.number);
+    setActiveAyah(ayah.numberInSurah);
+  };
+
+  const changeReciter = (reciterId) => {
+    setSelectedReciter(reciterId);
+    setShowReciterSelector(false);
+    // إيقاف أي صوت قيد التشغيل
+    if (audioPlaying) {
+      audioElement.pause();
+      setAudioPlaying(false);
+    }
+    if (playingAyah) {
+      setPlayingAyah(null);
+    }
   };
 
   if (loading) {
@@ -115,6 +158,36 @@ export default function SurahPage({ params }) {
               <FaArrowRight className="ml-2" /> العودة إلى قائمة السور
             </Link>
             <div className="flex gap-3">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowReciterSelector(!showReciterSelector)} 
+                  className="btn flex items-center gap-2 bg-primary-light bg-opacity-20 text-primary hover:bg-primary-light hover:bg-opacity-30"
+                >
+                  <FaUserAlt />
+                  {reciters.find(r => r.identifier === selectedReciter)?.name || 'مشاري العفاسي'}
+                  <FaExchangeAlt className="mr-1" />
+                </button>
+                
+                {showReciterSelector && (
+                  <div className="absolute z-50 mt-2 w-64 max-h-80 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 left-0">
+                    <div className="p-2 sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                      <h3 className="font-bold text-primary">اختر القارئ</h3>
+                    </div>
+                    <ul className="py-2">
+                      {reciters.map((reciter) => (
+                        <li 
+                          key={reciter.identifier} 
+                          className={`px-4 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${selectedReciter === reciter.identifier ? 'bg-primary-light bg-opacity-10 text-primary font-bold' : ''}`}
+                          onClick={() => changeReciter(reciter.identifier)}
+                        >
+                          {reciter.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              
               <button 
                 onClick={toggleAudio} 
                 className="btn btn-primary flex items-center gap-2"
@@ -162,12 +235,22 @@ export default function SurahPage({ params }) {
                       ? 'bg-primary-light bg-opacity-10 border-r-4 border-primary' 
                       : 'hover:bg-gray-50 dark:hover:bg-gray-900'
                   }`}
-                  onClick={() => handleAyahClick(ayah.numberInSurah)}
                 >
-                  <span>{ayah.text}</span>
-                  <span className="inline-block mr-2 p-1 bg-gradient-to-br from-primary to-primary-light text-white rounded-full w-8 h-8 text-center text-sm shadow-sm">
-                    {ayah.numberInSurah}
-                  </span>
+                  <div className="flex justify-between items-center">
+                    <span className="quran-text text-right">{ayah.text}</span>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => handleAyahClick(ayah)} 
+                        className={`p-2 rounded-full ${playingAyah === ayah.number ? 'bg-primary text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                        title="استماع للآية"
+                      >
+                        {playingAyah === ayah.number ? <FaPause size={14} /> : <FaPlay size={14} />}
+                      </button>
+                      <span className="inline-block p-1 bg-gradient-to-br from-primary to-primary-light text-white rounded-full w-8 h-8 text-center text-sm shadow-sm">
+                        {ayah.numberInSurah}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
